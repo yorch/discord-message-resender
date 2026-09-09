@@ -39,6 +39,12 @@ docker compose up -d
 docker compose logs -f ingest
 ```
 
+Confirm the stack is wired correctly:
+
+```bash
+./scripts/verify-stack.sh
+```
+
 Then query the archive:
 
 ```bash
