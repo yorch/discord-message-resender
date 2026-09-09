@@ -71,5 +71,5 @@ would lose.
 Trading alerts are usually posted by other bots as rich embeds, not plain text. An
 implementation that reads only `message.content` captures empty strings for most of the
 interesting traffic. The normalizer stores content, embeds, and attachments separately,
-plus the complete raw event payload, so a later schema decision can be backfilled from
+plus a faithful reconstructed snapshot of the event, so a later schema decision can be backfilled from
 data already captured rather than requiring the messages to arrive again.

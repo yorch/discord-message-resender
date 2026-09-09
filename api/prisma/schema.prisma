@@ -35,8 +35,10 @@ model Message {
   /// Array of Discord embed objects, the usual payload for bot-posted alerts.
   embeds      Json      @default("[]")
   attachments Json      @default("[]")
-  /// Complete raw gateway payload, so a later schema change can be backfilled
-  /// from data already captured instead of waiting for the messages to recur.
+  /// Faithful snapshot of the message as the library exposed it. discord.py does
+  /// not retain the original gateway frame, so this is reconstructed rather than
+  /// captured verbatim. It exists so a later schema change can be backfilled from
+  /// stored data instead of waiting for the traffic to recur.
   raw         Json
 
   sentAt      DateTime  @map("sent_at") @db.Timestamptz(3)
