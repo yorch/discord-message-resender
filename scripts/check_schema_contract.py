@@ -79,6 +79,15 @@ async def main() -> int:
         check("sent_at is timezone aware", row.sent_at.tzinfo is not None, True)
         check("author_is_bot", row.author_is_bot, True)
 
+    print("soft delete")
+    check("delete marks a stored message", await db.record_delete(MESSAGE.id), True)
+    is_deleted = await db.pool.fetchval(
+        "SELECT deleted_at IS NOT NULL FROM messages WHERE id=$1", MESSAGE.id
+    )
+    check("deleted_at is set", is_deleted, True)
+    check("repeated delete is a no-op", await db.record_delete(MESSAGE.id), False)
+    check("bulk delete counts only known ids", await db.record_bulk_delete([MESSAGE.id, "1"]), 0)
+
     print("failure handling")
     await db.mark_attempt_failed(MESSAGE.id, "beta", "simulated 503", 0, 8)
     status = await db.pool.fetchval(

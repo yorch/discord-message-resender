@@ -16,12 +16,19 @@ from .models import CapturedMessage
 
 log = logging.getLogger(__name__)
 
+# Cap on remembered deletes that arrived before their create. Bounded so a stream
+# of deletes for messages we never stored cannot grow without limit.
+_MAX_PENDING_DELETES = 2048
+
 
 class Pipeline:
     def __init__(self, settings: Settings, database: Database, forwarder: WebhookForwarder):
         self._settings = settings
         self._db = database
         self._forwarder = forwarder
+        # Message IDs whose delete event arrived before the create was stored.
+        # Insertion-ordered so the oldest can be evicted when the cap is hit.
+        self._pending_deletes: dict[str, None] = {}
 
     async def ingest(self, captured: CapturedMessage) -> None:
         """Archive a message, then fan it out.
@@ -34,6 +41,15 @@ class Pipeline:
         if not stored:
             # Expected after a gateway resume, which replays recent events.
             log.debug("message %s already stored, skipping fan-out", captured.id)
+            return
+
+        # A delete for this message may have arrived before the create was
+        # stored (gateway events dispatch as independent tasks). If so, mark it
+        # deleted now and do not forward a message that was already retracted.
+        if captured.id in self._pending_deletes:
+            del self._pending_deletes[captured.id]
+            await self._db.record_delete(captured.id)
+            log.info("reconciled delete that arrived before create: %s", captured.id)
             return
 
         log.info(
@@ -51,6 +67,30 @@ class Pipeline:
         """Record an edit. Alerts get corrected, and the correction is the signal."""
         if await self._db.record_edit(captured):
             log.info("recorded edit to %s", captured.id)
+
+    async def apply_delete(self, message_id: str) -> None:
+        """Mark a stored message deleted. Deletes are archived, not forwarded."""
+        if await self._db.record_delete(message_id):
+            log.info("marked %s as deleted", message_id)
+            return
+        # No live row matched. Either the message predates our joining (a
+        # harmless miss that expires) or its create is still in flight and will
+        # reconcile in ingest(). A residual sub-millisecond window remains where
+        # a create commits and checks the pending set before this line runs;
+        # fully closing it would require a DB tombstone that reworks the fan-out
+        # dedup contract, which is not worth it for how rare it is.
+        self._remember_pending_delete(message_id)
+        log.debug("delete for unstored message %s; queued for reconciliation", message_id)
+
+    def _remember_pending_delete(self, message_id: str) -> None:
+        self._pending_deletes[message_id] = None
+        if len(self._pending_deletes) > _MAX_PENDING_DELETES:
+            oldest = next(iter(self._pending_deletes))
+            del self._pending_deletes[oldest]
+
+    async def apply_bulk_delete(self, message_ids: list[str]) -> None:
+        if marked := await self._db.record_bulk_delete(message_ids):
+            log.info("marked %d message(s) as deleted (bulk)", marked)
 
     async def _dispatch(self, route: Route, captured: CapturedMessage) -> None:
         if not route.forwards:

@@ -13,6 +13,7 @@ class FakeDb:
     def __init__(self, log, already_stored=()):
         self.log = log
         self._stored = set(already_stored)
+        self._deleted = set()
         self.failures = []
 
     async def store_message(self, message):
@@ -41,6 +42,21 @@ class FakeDb:
     ):
         self.log.append(f"failed:{message_id}:{route}:retryable={retryable}")
         self.failures.append((error, attempts, max_attempts, retryable))
+
+    async def record_delete(self, message_id):
+        # Mirror the real SQL: only a stored, not-yet-deleted row can flip.
+        if message_id not in self._stored or message_id in self._deleted:
+            return False
+        self._deleted.add(message_id)
+        self.log.append(f"delete:{message_id}")
+        return True
+
+    async def record_bulk_delete(self, message_ids):
+        marked = [m for m in message_ids if m in self._stored and m not in self._deleted]
+        self._deleted.update(marked)
+        if marked:
+            self.log.append(f"bulkdelete:{','.join(sorted(marked))}")
+        return len(marked)
 
     async def due_deliveries(self, max_attempts, limit=50):
         return []
@@ -189,3 +205,81 @@ async def test_message_from_an_unrouted_channel_is_archived_only(make_message, c
     await pipeline.ingest(make_message(channel_id=channel_id))
     assert fw.sent == []
     assert log == ["store:900"]
+
+
+async def test_delete_marks_stored_message(make_message):
+    log = []
+    pipeline, db, _ = build([route()], log)
+    await pipeline.ingest(make_message(id="900"))
+    log.clear()
+    await pipeline.apply_delete("900")
+    assert log == ["delete:900"]
+    assert "900" in db._deleted
+
+
+async def test_replayed_delete_is_a_no_op(make_message):
+    # The gateway can redeliver a delete after a resume; the deleted_at guard
+    # makes the repeat do nothing rather than move the timestamp.
+    log = []
+    pipeline, _, _ = build([route()], log)
+    await pipeline.ingest(make_message(id="900"))
+    log.clear()
+    await pipeline.apply_delete("900")
+    await pipeline.apply_delete("900")
+    assert log == ["delete:900"]
+
+
+async def test_delete_of_never_stored_message_is_queued_not_marked(make_message):
+    # A delete for a message we never stored (predates joining, or its create is
+    # still in flight) must not fabricate a deletion.
+    log = []
+    pipeline, db, _ = build([route()], log)
+    await pipeline.apply_delete("777")
+    assert db._deleted == set()
+    assert "777" in pipeline._pending_deletes
+
+
+async def test_delete_that_races_ahead_of_create_is_reconciled(make_message):
+    # Delete arrives before the create is stored. When the create lands, the
+    # message is marked deleted and NOT forwarded.
+    log = []
+    pipeline, db, fw = build([route()], log)
+    await pipeline.apply_delete("900")  # create not stored yet
+    assert "900" not in db._deleted
+    await pipeline.ingest(make_message(id="900"))
+    assert "900" in db._deleted
+    assert fw.sent == []
+    assert "900" not in pipeline._pending_deletes
+
+
+def test_pending_delete_set_is_bounded():
+    from resender.pipeline import _MAX_PENDING_DELETES
+
+    log = []
+    pipeline, _, _ = build([route()], log)
+    for i in range(_MAX_PENDING_DELETES + 100):
+        pipeline._remember_pending_delete(str(i))
+    assert len(pipeline._pending_deletes) == _MAX_PENDING_DELETES
+    # oldest evicted, newest kept
+    assert "0" not in pipeline._pending_deletes
+    assert str(_MAX_PENDING_DELETES + 99) in pipeline._pending_deletes
+
+
+async def test_bulk_delete_marks_only_stored_live_ids(make_message):
+    log = []
+    pipeline, db, _ = build([route()], log)
+    await pipeline.ingest(make_message(id="111"))
+    await pipeline.ingest(make_message(id="222"))
+    await pipeline.apply_delete("222")  # already deleted
+    log.clear()
+    # 111 is stored+live, 222 is already deleted, 333 was never stored.
+    await pipeline.apply_bulk_delete(["111", "222", "333"])
+    assert log == ["bulkdelete:111"]
+    assert db._deleted == {"111", "222"}
+
+
+async def test_empty_bulk_delete_does_nothing(make_message):
+    log = []
+    pipeline, _, _ = build([route()], log)
+    await pipeline.apply_bulk_delete([])
+    assert log == []

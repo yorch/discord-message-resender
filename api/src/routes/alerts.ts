@@ -13,6 +13,8 @@ const listQuery = z.object({
   q: z.string().min(1).optional(),
   since: z.coerce.date().optional(),
   until: z.coerce.date().optional(),
+  /// any (default) returns live and deleted; only returns deleted; exclude hides them.
+  deleted: z.enum(["any", "only", "exclude"]).default("any"),
   limit: z.coerce.number().int().positive().max(MAX_LIMIT).default(50),
   cursor: z.string().optional(),
 });
@@ -42,7 +44,7 @@ export async function alertRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid query", issues: parsed.error.issues });
     }
-    const { guildId, channelId, authorId, q, since, until, limit, cursor } = parsed.data;
+    const { guildId, channelId, authorId, q, since, until, deleted, limit, cursor } = parsed.data;
 
     let after: Cursor | undefined;
     if (cursor) {
@@ -62,6 +64,8 @@ export async function alertRoutes(app: FastifyInstance) {
         ...((since || until) && {
           sentAt: { ...(since && { gte: since }), ...(until && { lte: until }) },
         }),
+        ...(deleted === "only" && { deletedAt: { not: null } }),
+        ...(deleted === "exclude" && { deletedAt: null }),
         // Row-value comparison expressed as OR, since Prisma has no tuple
         // comparison. Equivalent to (sent_at, id) < (cursor.sentAt, cursor.id).
         ...(after && {
@@ -71,6 +75,9 @@ export async function alertRoutes(app: FastifyInstance) {
       orderBy: [{ sentAt: "desc" }, { id: "desc" }],
       // One extra row tells us whether another page exists without a count query.
       take: limit + 1,
+      // The full raw snapshot is large and unused by list clients; /alerts/:id
+      // still returns it for the rare case that needs the complete payload.
+      omit: { raw: true },
       include: {
         deliveries: {
           select: { route: true, status: true, attempts: true, deliveredAt: true },
@@ -108,7 +115,7 @@ export async function alertRoutes(app: FastifyInstance) {
   });
 
   app.get("/stats", async () => {
-    const [byChannel, byDeliveryStatus, total, latest] = await Promise.all([
+    const [byChannel, byDeliveryStatus, total, deletedCount, latest] = await Promise.all([
       prisma.message.groupBy({
         by: ["guildId", "guildName", "channelId", "channelName"],
         _count: { _all: true },
@@ -116,11 +123,13 @@ export async function alertRoutes(app: FastifyInstance) {
       }),
       prisma.delivery.groupBy({ by: ["route", "status"], _count: { _all: true } }),
       prisma.message.count(),
+      prisma.message.count({ where: { deletedAt: { not: null } } }),
       prisma.message.findFirst({ orderBy: { sentAt: "desc" }, select: { sentAt: true } }),
     ]);
 
     return {
       totalMessages: total,
+      deletedMessages: deletedCount,
       latestMessageAt: latest?.sentAt ?? null,
       channels: byChannel.map((c) => ({
         guildId: c.guildId,

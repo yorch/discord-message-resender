@@ -44,12 +44,17 @@ model Message {
   sentAt      DateTime  @map("sent_at") @db.Timestamptz(6)
   editedAt    DateTime? @map("edited_at") @db.Timestamptz(6)
   capturedAt  DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
+  /// Set when the source message is deleted. The row is kept rather than removed:
+  /// a retracted alert is itself a signal, and the archive should show that it
+  /// existed and was withdrawn. Null means live.
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   deliveries  Delivery[]
 
   @@index([guildId, channelId, sentAt(sort: Desc)])
   @@index([sentAt(sort: Desc)])
   @@index([authorId])
+  @@index([deletedAt])
   @@map("messages")
 }
 

@@ -64,3 +64,17 @@ class AlertListener(discord.Client):
         if str(after.channel.id) not in self._watched:
             return
         await self._pipeline.apply_edit(from_discord_message(after))
+
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        # Raw rather than on_message_delete: the raw event fires even for a
+        # message that was never in the client cache, and the stored row is
+        # keyed by ID so no content is needed to mark it deleted.
+        if str(payload.channel_id) not in self._watched:
+            return
+        await self._pipeline.apply_delete(str(payload.message_id))
+
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent) -> None:
+        # A channel purge arrives as one bulk event rather than many singles.
+        if str(payload.channel_id) not in self._watched:
+            return
+        await self._pipeline.apply_bulk_delete([str(mid) for mid in payload.message_ids])

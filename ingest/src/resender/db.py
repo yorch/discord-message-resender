@@ -36,6 +36,13 @@ UPDATE messages
 RETURNING id
 """
 
+_SOFT_DELETE_MESSAGE = """
+UPDATE messages
+   SET deleted_at = now()
+ WHERE id = $1 AND deleted_at IS NULL
+RETURNING id
+"""
+
 _INSERT_DELIVERY = """
 INSERT INTO deliveries (message_id, route, status)
 VALUES ($1, $2, $3::delivery_status)
@@ -171,6 +178,31 @@ class Database:
             message.edited_at or datetime.now(UTC),
         )
         return updated is not None
+
+    async def record_delete(self, message_id: str) -> bool:
+        """Soft-delete a stored message. False if it was unknown or already deleted.
+
+        The row is kept: a deleted alert is itself a signal, and the WHERE guard
+        on deleted_at makes a repeated delete event a no-op rather than moving
+        the timestamp each time the gateway replays it.
+        """
+        deleted = await self.pool.fetchval(_SOFT_DELETE_MESSAGE, message_id)
+        return deleted is not None
+
+    async def record_bulk_delete(self, message_ids: list[str]) -> int:
+        """Soft-delete many messages at once, as when a channel is purged.
+
+        Returns how many rows this actually flipped, which is only the ones we
+        had stored; unknown IDs in the purge are ignored.
+        """
+        if not message_ids:
+            return 0
+        rows = await self.pool.fetch(
+            "UPDATE messages SET deleted_at = now() "
+            "WHERE id = ANY($1::text[]) AND deleted_at IS NULL RETURNING id",
+            message_ids,
+        )
+        return len(rows)
 
     async def queue_delivery(self, message_id: str, route: str, status: str) -> bool:
         """Create the delivery row. False if this route already has one."""
