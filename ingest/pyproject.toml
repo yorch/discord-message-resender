@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 resender-ingest = "resender.__main__:main"
+resender-check-token = "resender.validate:main"
 
 [dependency-groups]
 dev = [

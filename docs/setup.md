@@ -61,7 +61,24 @@ the message text **and** the text inside its embeds. Start with no filters, let
 real traffic accumulate for a day, then query `/alerts` to see what you actually
 receive before deciding what to exclude.
 
-## 6. Start it
+## 6. Check the token before starting
+
+Confirm the token you just pasted actually works, so a wrong paste fails in two
+seconds instead of looking like a broken gateway connection later:
+
+```bash
+cd ingest && uv run resender-check-token
+```
+
+On success it prints the account the token belongs to. It never fetches or logs
+the token; it only reads the one in your `.env` and makes a single read-only
+call to Discord. Exit codes: `0` valid, `1` missing or rejected, `2` the check
+could not reach Discord.
+
+A `401` here means the token is wrong, truncated, or expired. Changing your
+Discord password invalidates old tokens, so re-copy it from the Network tab.
+
+## 7. Start it
 
 ```bash
 docker compose up -d
@@ -72,7 +89,7 @@ At startup the log lists every watched channel it resolved. A channel that logs
 `is not visible to this account` means the ID is wrong or the account has lost
 read access there.
 
-## 7. Verify
+## 8. Verify
 
 ```bash
 ./scripts/verify-stack.sh

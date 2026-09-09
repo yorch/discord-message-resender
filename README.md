@@ -35,6 +35,7 @@ idle client. Read it before you put a token in `.env`.
 ```bash
 cp .env.example .env                      # fill in token, webhooks, API token
 cp config/routes.example.yaml config/routes.yaml   # fill in guild and channel IDs
+cd ingest && uv run resender-check-token && cd ..   # confirm the token works
 docker compose up -d
 docker compose logs -f ingest
 ```
