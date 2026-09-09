@@ -11,6 +11,17 @@ docker compose down           # stop, keeping data
 
 `docker compose down -v` deletes the archive. There is no confirmation.
 
+## The dashboard
+
+A read-only web view is served by the API at `http://localhost:4000/`. Paste
+your `API_TOKEN` once; it is kept in that browser's local storage and sent only
+on the page's own calls to the API. The page lists captured messages with their
+embeds and delivery status, searches content, filters by channel, and toggles
+between all, live-only, and deleted-only. Deleted alerts appear struck through.
+
+The page itself is unauthenticated markup. Every request for actual data still
+carries the bearer token, so the archive is not exposed by the dashboard route.
+
 ## Querying the archive
 
 ```bash
@@ -58,6 +69,22 @@ UPDATE deliveries
 ```
 
 The sweeper picks them up within its interval.
+
+## Deleted alerts
+
+A message deleted in the source channel is not removed from the archive. Its
+`deleted_at` is set and the row is kept, because a retracted alert is itself a
+signal. Both single deletes and channel purges (bulk deletes) are captured, and
+they fire even for messages the client never cached.
+
+Filter them through the API:
+
+```bash
+curl -H "$AUTH" 'http://localhost:4000/alerts?deleted=only'      # retracted only
+curl -H "$AUTH" 'http://localhost:4000/alerts?deleted=exclude'   # live only
+```
+
+`/stats` reports `deletedMessages` alongside the total.
 
 ## Backups
 

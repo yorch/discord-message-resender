@@ -73,3 +73,21 @@ implementation that reads only `message.content` captures empty strings for most
 interesting traffic. The normalizer stores content, embeds, and attachments separately,
 plus a faithful reconstructed snapshot of the event, so a later schema decision can be backfilled from
 data already captured rather than requiring the messages to arrive again.
+
+
+## Deletes are soft
+
+A message deleted at the source sets `deleted_at` and keeps the row. A retracted
+alert is a signal, not noise, so the archive records that it existed and was
+withdrawn rather than erasing it. Delete events are consumed from the raw
+gateway events, which fire even for messages the client never cached, so a
+delete is captured whether or not the create was seen live. Deletes are archived
+only, never forwarded.
+
+## The dashboard is embedded, not a static file
+
+The API serves a single-page dashboard at `/`. Its HTML is compiled into the
+bundle as a string rather than shipped as a static asset, so it travels with the
+existing `COPY dist` step and adds neither a dependency nor an asset-copy stage
+to the image. The page is unauthenticated markup; the bearer token is entered in
+the page and used only on its own data calls, which stay behind the auth hook.

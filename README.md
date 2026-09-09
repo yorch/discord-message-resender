@@ -46,7 +46,9 @@ Confirm the stack is wired correctly:
 ./scripts/verify-stack.sh
 ```
 
-Then query the archive:
+Open the dashboard at `http://localhost:4000/`, paste your `API_TOKEN`, and browse
+the archive. Deleted alerts are kept and shown struck through; filter to live-only or
+deleted-only. Or query the API directly:
 
 ```bash
 curl -H "Authorization: Bearer $API_TOKEN" \
