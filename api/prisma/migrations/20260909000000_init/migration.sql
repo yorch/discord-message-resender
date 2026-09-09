@@ -18,9 +18,9 @@ CREATE TABLE "messages" (
     "embeds" JSONB NOT NULL DEFAULT '[]',
     "attachments" JSONB NOT NULL DEFAULT '[]',
     "raw" JSONB NOT NULL,
-    "sent_at" TIMESTAMPTZ(3) NOT NULL,
-    "edited_at" TIMESTAMPTZ(3),
-    "captured_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sent_at" TIMESTAMPTZ(6) NOT NULL,
+    "edited_at" TIMESTAMPTZ(6),
+    "captured_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "messages_pkey" PRIMARY KEY ("id")
 );
@@ -32,9 +32,9 @@ CREATE TABLE "deliveries" (
     "status" "delivery_status" NOT NULL DEFAULT 'PENDING',
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "last_error" TEXT,
-    "delivered_at" TIMESTAMPTZ(3),
-    "next_attempt_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "delivered_at" TIMESTAMPTZ(6),
+    "next_attempt_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "deliveries_pkey" PRIMARY KEY ("message_id","route")
 );

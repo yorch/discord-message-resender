@@ -41,9 +41,9 @@ model Message {
   /// stored data instead of waiting for the traffic to recur.
   raw         Json
 
-  sentAt      DateTime  @map("sent_at") @db.Timestamptz(3)
-  editedAt    DateTime? @map("edited_at") @db.Timestamptz(3)
-  capturedAt  DateTime  @default(now()) @map("captured_at") @db.Timestamptz(3)
+  sentAt      DateTime  @map("sent_at") @db.Timestamptz(6)
+  editedAt    DateTime? @map("edited_at") @db.Timestamptz(6)
+  capturedAt  DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
 
   deliveries  Delivery[]
 
@@ -63,11 +63,16 @@ model Delivery {
   status        DeliveryStatus @default(PENDING)
   attempts      Int            @default(0)
   lastError     String?        @map("last_error")
-  deliveredAt   DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  deliveredAt   DateTime?      @map("delivered_at") @db.Timestamptz(6)
   /// Drives exponential backoff. The retry sweeper selects on this index rather
   /// than holding a queue in memory that a restart would lose.
-  nextAttemptAt DateTime       @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  ///
+  /// Microsecond precision is deliberate. At Timestamptz(3) the default value
+  /// rounds to the nearest millisecond, which lands up to 0.5ms in the FUTURE
+  /// about 60% of the time, so a row could be written and then miss a sweep
+  /// running microseconds later.
+  nextAttemptAt DateTime       @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
   message       Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
 

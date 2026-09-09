@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Postgres 18 moved PGDATA and declares VOLUME /var/lib/postgresql, not
+      # /var/lib/postgresql/data. Mounting the old path would send the real data
+      # to an anonymous volume that a prune silently destroys.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_PORT: 4000
+      NODE_ENV: production
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ingest:
+    build:
+      context: ./ingest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ROUTES_PATH: /app/config/routes.yaml
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      # Waits on api rather than postgres: the api container runs the migrations
+      # at startup, and ingest writes with raw SQL that needs those tables.
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
