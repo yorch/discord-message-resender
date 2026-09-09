@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.local
+config/routes.yaml
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Prisma generated client
+api/src/generated/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Runtime data
+data/
+
+# Scratch
+tmp/
+
+# OS
+.DS_Store

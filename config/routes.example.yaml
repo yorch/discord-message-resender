@@ -1,0 +1,43 @@
+# Copy to config/routes.yaml and fill in real IDs.
+#
+# To get IDs: Discord Settings > Advanced > Developer Mode, then right-click a
+# server or channel and choose "Copy Server ID" / "Copy Channel ID".
+#
+# Every message in a watched channel is STORED regardless of routes. Routes only
+# control what gets forwarded onward. A channel with no route is archive-only.
+
+routes:
+  - name: alpha-signals
+    enabled: true
+    source:
+      guild_id: "000000000000000000"
+      channel_ids:
+        - "111111111111111111"
+        - "222222222222222222"
+    target:
+      # Name of the environment variable holding the Discord webhook URL.
+      # Never put the URL itself in this file; it is a credential.
+      webhook_url_env: WEBHOOK_ALPHA
+    filters:
+      # All filters are optional. Omit or leave empty to forward everything.
+      #
+      # Only forward messages from these author IDs (alert bots, specific callers).
+      author_ids: []
+      # Only forward if the message text or any embed field matches one of these
+      # regular expressions. Case-insensitive.
+      match_any: []
+      # Never forward if any of these match, evaluated after match_any.
+      exclude_any:
+        - "^gm\\b"
+        - "good morning"
+
+  - name: beta-archive-only
+    enabled: true
+    source:
+      guild_id: "333333333333333333"
+      channel_ids:
+        - "444444444444444444"
+    target:
+      # Omit the target block entirely to archive without forwarding.
+      webhook_url_env: null
+    filters: {}
