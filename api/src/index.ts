@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
 import Fastify from "fastify";
 import { requireBearerToken } from "./auth.js";
+import { renderDashboard } from "./dashboard.js";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { alertRoutes } from "./routes/alerts.js";
@@ -11,6 +13,30 @@ const app = Fastify({
     // Prisma error objects, so scrub it from every log record.
     redact: ["req.headers.authorization", "*.connectionString", "*.DATABASE_URL"],
   },
+});
+
+// Unauthenticated markup. The bearer token is entered in the page and used only
+// on its calls to /alerts and /stats, which stay behind the auth hook below.
+app.get("/", async (_request, reply) => {
+  // Per-request nonce ties the CSP to exactly this response's inline blocks.
+  const nonce = randomBytes(16).toString("base64");
+  const csp = [
+    "default-src 'none'",
+    `style-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}'`,
+    // The dashboard's fetch() calls to /alerts and /stats are same-origin.
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+  return reply
+    .type("text/html")
+    .header("Content-Security-Policy", csp)
+    .header("X-Content-Type-Options", "nosniff")
+    .header("X-Frame-Options", "DENY")
+    .header("Referrer-Policy", "no-referrer")
+    .send(renderDashboard(nonce));
 });
 
 // Unauthenticated: this is what the container healthcheck hits.
