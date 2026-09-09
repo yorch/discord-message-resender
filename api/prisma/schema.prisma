@@ -1,0 +1,86 @@
+// Prisma owns the schema and the migrations for both services.
+//
+// The ingest service (Python) writes to these tables through asyncpg with
+// hand-written SQL, so every field carries an explicit @map. Do not rely on
+// Prisma's default column naming here: the snake_case names below are a
+// contract with ingest/src/resender/db.py.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/client"
+}
+
+// Prisma 7 removed `url` from the datasource block. The connection string for
+// CLI and migrations lives in prisma.config.ts; the runtime client gets it via
+// the driver adapter in src/prisma.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+/// One captured Discord message. The primary key is the source snowflake, so a
+/// replayed gateway event after a resume is an ON CONFLICT no-op rather than a
+/// duplicate row.
+model Message {
+  id          String    @id
+  guildId     String    @map("guild_id")
+  guildName   String?   @map("guild_name")
+  channelId   String    @map("channel_id")
+  channelName String?   @map("channel_name")
+  authorId    String    @map("author_id")
+  authorName  String    @map("author_name")
+  authorIsBot Boolean   @default(false) @map("author_is_bot")
+
+  /// Plain message text. Frequently empty: most alert bots post embeds.
+  content     String    @default("")
+  /// Array of Discord embed objects, the usual payload for bot-posted alerts.
+  embeds      Json      @default("[]")
+  attachments Json      @default("[]")
+  /// Complete raw gateway payload, so a later schema change can be backfilled
+  /// from data already captured instead of waiting for the messages to recur.
+  raw         Json
+
+  sentAt      DateTime  @map("sent_at") @db.Timestamptz(3)
+  editedAt    DateTime? @map("edited_at") @db.Timestamptz(3)
+  capturedAt  DateTime  @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  deliveries  Delivery[]
+
+  @@index([guildId, channelId, sentAt(sort: Desc)])
+  @@index([sentAt(sort: Desc)])
+  @@index([authorId])
+  @@map("messages")
+}
+
+/// Per-route forwarding state. Kept out of Message because one capture can fan
+/// out to several targets that fail independently, and because the composite
+/// primary key is what prevents a restart from double-sending.
+model Delivery {
+  messageId     String         @map("message_id")
+  /// Route name from config/routes.yaml.
+  route         String
+  status        DeliveryStatus @default(PENDING)
+  attempts      Int            @default(0)
+  lastError     String?        @map("last_error")
+  deliveredAt   DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  /// Drives exponential backoff. The retry sweeper selects on this index rather
+  /// than holding a queue in memory that a restart would lose.
+  nextAttemptAt DateTime       @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  message       Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, route])
+  @@index([status, nextAttemptAt])
+  @@map("deliveries")
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  /// Matched a route but was filtered out. Recorded rather than dropped so the
+  /// filters can be audited against real traffic.
+  SKIPPED
+
+  @@map("delivery_status")
+}
