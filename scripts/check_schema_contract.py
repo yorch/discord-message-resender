@@ -53,6 +53,14 @@ async def main() -> int:
     check("first store inserts", await db.store_message(MESSAGE), True)
     check("replayed store is a no-op", await db.store_message(MESSAGE), False)
 
+    print("search text")
+    search_text = await db.pool.fetchval(
+        "SELECT search_text FROM messages WHERE id = $1", MESSAGE.id
+    )
+    # The ingest writes content + embed text so search reaches embed-only alerts.
+    check("search_text includes content", "BUY SPY 500C" in (search_text or ""), True)
+    check("search_text includes embed field", "512" in (search_text or ""), True)
+
     print("delivery rows")
     check("first queue creates row", await db.queue_delivery(MESSAGE.id, "alpha", "PENDING"), True)
     check("repeat queue is a no-op", await db.queue_delivery(MESSAGE.id, "alpha", "PENDING"), False)

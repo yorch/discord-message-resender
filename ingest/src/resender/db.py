@@ -23,15 +23,15 @@ _INSERT_MESSAGE = """
 INSERT INTO messages (
     id, guild_id, guild_name, channel_id, channel_name,
     author_id, author_name, author_is_bot,
-    content, embeds, attachments, raw, sent_at, edited_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    content, search_text, embeds, attachments, raw, sent_at, edited_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 ON CONFLICT (id) DO NOTHING
 RETURNING id
 """
 
 _UPDATE_MESSAGE = """
 UPDATE messages
-   SET content = $2, embeds = $3, attachments = $4, raw = $5, edited_at = $6
+   SET content = $2, search_text = $3, embeds = $4, attachments = $5, raw = $6, edited_at = $7
  WHERE id = $1
 RETURNING id
 """
@@ -158,6 +158,7 @@ class Database:
             message.author_name,
             message.author_is_bot,
             message.content,
+            message.searchable_text,
             message.embeds,
             message.attachments,
             message.raw,
@@ -172,6 +173,7 @@ class Database:
             _UPDATE_MESSAGE,
             message.id,
             message.content,
+            message.searchable_text,
             message.embeds,
             message.attachments,
             message.raw,

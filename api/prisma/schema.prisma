@@ -32,6 +32,10 @@ model Message {
 
   /// Plain message text. Frequently empty: most alert bots post embeds.
   content     String    @default("")
+  /// content plus the human-readable text inside every embed, written by the
+  /// ingest service. Lets search reach embed-only alerts, which is most of them,
+  /// through a plain column filter instead of scanning JSON.
+  searchText  String    @default("") @map("search_text")
   /// Array of Discord embed objects, the usual payload for bot-posted alerts.
   embeds      Json      @default("[]")
   attachments Json      @default("[]")
