@@ -5,6 +5,11 @@
 default:
     @just --list
 
+# Short aliases for the everyday docker recipes.
+alias up := docker-up
+alias down := docker-down
+alias logs := docker-logs
+
 # ── Setup ─────────────────────────────────────────────────────────
 
 # Create .env and routes.yaml from examples, then install everything
@@ -95,32 +100,32 @@ db-studio:
 
 # Start the stack in the background
 [group('docker')]
-up:
+docker-up:
     docker compose up -d
 
 # Stop the stack, keeping the archive
 [group('docker')]
-down:
+docker-down:
     docker compose down
 
 # Follow a service's logs (default: ingest)
 [group('docker')]
-logs service="ingest":
+docker-logs service="ingest":
     docker compose logs -f {{ service }}
 
 # Show service status
 [group('docker')]
-ps:
+docker-ps:
     docker compose ps
 
 # Rebuild both images
 [group('docker')]
-build-images:
+docker-build:
     docker compose build
 
 # Rebuild images and restart the stack
 [group('docker')]
-rebuild: build-images
+docker-rebuild: docker-build
     docker compose up -d
 
 # ── Verify / operate ──────────────────────────────────────────────
