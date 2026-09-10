@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>discord-message-resender</title>
+<meta name="description" content="Capture Discord alert-channel messages in real time, archive them in Postgres, and forward them to a server you control." />
+<meta name="robots" content="noindex" />
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --border:#262b36; --text:#e6e9ef;
+    --muted:#8b93a3; --accent:#4f8cff; --warn-bg:#2a1c14; --warn-border:#7a4a1f;
+    --warn-text:#ffcaa0; --code-bg:#0c0e13;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#f6f7f9; --panel:#fff; --border:#e2e5ea; --text:#1a1d24;
+      --muted:#5b6472; --accent:#2563eb; --warn-bg:#fdf3e7;
+      --warn-border:#e6b880; --warn-text:#7a4a12; --code-bg:#f0f2f6;
+    }
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:820px; margin:0 auto; padding:0 20px 80px; }
+  header { padding:56px 0 20px; }
+  h1 { font-size:30px; margin:0 0 6px; letter-spacing:-.02em; }
+  .tagline { color:var(--muted); font-size:18px; margin:0 0 20px; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .btn { display:inline-block; padding:8px 15px; border-radius:8px;
+    border:1px solid var(--border); color:var(--text); font-size:14px; }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  h2 { font-size:21px; margin:44px 0 12px; padding-top:8px; letter-spacing:-.01em; }
+  h3 { font-size:16px; margin:24px 0 8px; }
+  p { margin:12px 0; }
+  ol,ul { padding-left:22px; }
+  li { margin:6px 0; }
+  code { background:var(--code-bg); padding:2px 6px; border-radius:5px;
+    font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  pre { background:var(--code-bg); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; overflow-x:auto; }
+  pre code { background:none; padding:0; font-size:13px; }
+  .callout { border:1px solid var(--warn-border); background:var(--warn-bg);
+    color:var(--warn-text); border-radius:10px; padding:14px 16px; margin:22px 0; }
+  .callout strong { color:var(--warn-text); }
+  .step { color:var(--muted); font-size:13px; text-transform:uppercase;
+    letter-spacing:.08em; margin-top:36px; }
+  hr { border:0; border-top:1px solid var(--border); margin:40px 0; }
+  footer { color:var(--muted); font-size:14px; margin-top:48px; }
+  .pipe { font:13px/1.7 ui-monospace,Menlo,monospace; color:var(--muted);
+    white-space:pre; overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>discord-message-resender</h1>
+  <p class="tagline">Capture messages from Discord alert channels in real time,
+    archive them in Postgres, and forward them into a server you control.</p>
+  <div class="btns">
+    <a class="btn primary" href="https://github.com/yorch/discord-message-resender">View on GitHub</a>
+    <a class="btn" href="#install">Install</a>
+    <a class="btn" href="#configure">Configure</a>
+    <a class="btn" href="#run">Run</a>
+  </div>
+</header>
+
+<div class="callout">
+  <strong>Read this first.</strong> This tool reads channels using your own Discord
+  user token. Automating a user account is against
+  <a href="https://discord.com/terms">Discord's Terms of Service</a>, and the
+  enforcement outcome is account termination, which would cost you access to every
+  server the account is in. Use it only if you accept that risk. If a source
+  channel is an Announcement channel, Discord's built-in <em>Follow</em> feature
+  mirrors it into your server with no token and no ToS exposure; prefer that where
+  it is available.
+</div>
+
+<h2>What it does</h2>
+<p>Three services behind one Postgres database. The ingest service holds a live
+gateway connection, stores every message, and fans matching ones out through
+Discord webhooks into your own server. A read-only API and web dashboard let you
+browse and query the archive.</p>
+<div class="pipe">source channels ─▶ ingest ─▶ Postgres (archive) ─▶ query API + dashboard
+                        └─▶ webhook ─▶ your own server</div>
+
+<h2 id="install">Install</h2>
+<p>You need <a href="https://docs.docker.com/get-docker/">Docker</a> and
+<a href="https://github.com/casey/just">just</a>. A Discord account that is a member
+of the alert servers supplies the token.</p>
+<pre><code>git clone https://github.com/yorch/discord-message-resender.git
+cd discord-message-resender
+just setup   # copies .env and config/routes.yaml from the examples, installs deps</code></pre>
+
+<h2 id="configure">Configure</h2>
+<p>Edit the two files <code>just setup</code> created.</p>
+
+<h3>1. Get your Discord token</h3>
+<ol>
+  <li>Open <a href="https://discord.com/app">discord.com/app</a> in a web browser and log in.</li>
+  <li>Open developer tools (<code>F12</code>) and select the <strong>Network</strong> tab.</li>
+  <li>Filter to <code>/api/v</code>, then click a channel so a request appears.</li>
+  <li>Click any <code>discord.com/api/v*</code> request and read the
+    <strong>Authorization</strong> request header. That raw value is the token; it
+    has no <code>Bearer</code> or <code>Bot</code> prefix.</li>
+</ol>
+<p>The token bypasses two-factor authentication, so treat it like your password.
+Changing your Discord password revokes it.</p>
+
+<h3>2. Fill in <code>.env</code></h3>
+<p>Set the database password, <code>DISCORD_USER_TOKEN</code>, one webhook URL per
+destination channel, and an <code>API_TOKEN</code> for the query API
+(<code>openssl rand -hex 32</code>). Then confirm the token works:</p>
+<pre><code>just check-token</code></pre>
+
+<h3>3. Fill in <code>config/routes.yaml</code></h3>
+<p>Turn on Developer Mode in Discord to copy server and channel IDs. Each route
+names a source guild, its channels, and the webhook to forward to. A route with no
+webhook is archive-only.</p>
+
+<h2 id="run">Run</h2>
+<pre><code>just docker-up      # start the stack
+just docker-logs    # follow the ingest logs</code></pre>
+<p>The log lists each watched channel it resolved at startup. A channel it cannot
+see means the ID is wrong or the account lost access.</p>
+
+<h2>Browse and query</h2>
+<p>Open the dashboard at <code>http://localhost:4000/</code> and paste your
+<code>API_TOKEN</code>. It lists captured messages with their embeds and delivery
+status, searches, filters by channel, and shows deleted alerts struck through.</p>
+<p>Or query the API directly:</p>
+<pre><code>TOKEN=$(grep '^API_TOKEN=' .env | cut -d= -f2-)
+curl -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/alerts?limit=20'
+curl -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/stats'</code></pre>
+
+<h2>Everyday tasks</h2>
+<p>Run <code>just</code> to list every recipe. Common ones:</p>
+<ul>
+  <li><code>just check</code> — lint, typecheck, build, and tests</li>
+  <li><code>just docker-up</code> / <code>just docker-down</code> / <code>just docker-logs</code> — operate the stack</li>
+  <li><code>just verify</code> — bring the stack up and check migrations, the schema contract, and auth</li>
+  <li><code>just db-migrate</code> / <code>just db-deploy</code> — manage the schema</li>
+</ul>
+
+<hr />
+<footer>
+  <p>Full documentation lives in the repository:
+    <a href="https://github.com/yorch/discord-message-resender/blob/main/docs/setup.md">setup</a>,
+    <a href="https://github.com/yorch/discord-message-resender/blob/main/docs/operations.md">operations</a>,
+    <a href="https://github.com/yorch/discord-message-resender/blob/main/docs/architecture.md">architecture</a>, and
+    <a href="https://github.com/yorch/discord-message-resender/blob/main/docs/risk.md">risk</a>.</p>
+</footer>
+</div>
+</body>
+</html>
