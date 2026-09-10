@@ -46,7 +46,7 @@ jobs:
         working-directory: ingest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
           cache-dependency-glob: ingest/uv.lock
@@ -93,7 +93,7 @@ jobs:
 
       # Exercise the hand-written ingest SQL against that schema, both the
       # cross-language contract and the retry lifecycle, with the Python toolchain.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
           cache-dependency-glob: ingest/uv.lock
