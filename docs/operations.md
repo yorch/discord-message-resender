@@ -95,10 +95,14 @@ docker compose exec -T postgres pg_dump -U resender resender | gzip > backup.sql
 gunzip -c backup.sql.gz | docker compose exec -T postgres psql -U resender resender
 ```
 
-The named volume is mounted at `/var/lib/postgresql`, which is where Postgres 18
-declares its VOLUME. If you ever change that mount path, check
-`docker inspect postgres:18-alpine` first: mounting the wrong path appears to
-work while writing to an anonymous volume that a prune destroys.
+The data is bind-mounted to a host directory, `./data/postgres` by default (set
+`POSTGRES_DATA_DIR` in `.env` to move it). It is mounted at `/var/lib/postgresql`
+inside the container, which is where Postgres 18 declares its VOLUME, so the real
+data lands at `./data/postgres/18/docker` on the host. If you ever change the
+container-side path, check `docker inspect postgres:18-alpine` first: mounting
+the wrong path appears to work while writing to an anonymous volume that a prune
+destroys. Backing up the whole host directory is only safe while the container
+is stopped; use `pg_dump` above for a hot backup.
 
 ## Continuous integration
 

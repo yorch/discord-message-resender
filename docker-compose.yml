@@ -7,10 +7,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
+      # Bind-mounted to a host path so the archive is visible and easy to back up.
       # Postgres 18 moved PGDATA and declares VOLUME /var/lib/postgresql, not
       # /var/lib/postgresql/data. Mounting the old path would send the real data
-      # to an anonymous volume that a prune silently destroys.
-      - postgres_data:/var/lib/postgresql
+      # to an anonymous volume that a prune silently destroys, so the target must
+      # be /var/lib/postgresql. Override the host side with POSTGRES_DATA_DIR.
+      - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -53,5 +55,3 @@ services:
       api:
         condition: service_healthy
 
-volumes:
-  postgres_data:
