@@ -21,23 +21,26 @@ const listQuery = z.object({
   cursor: z.string().optional(),
 });
 
-type Cursor = { sentAt: Date; id: string };
-
-/// Keyset pagination over (sent_at desc, id desc). Offset pagination would drift
-/// as new messages arrive at the head, silently repeating or skipping rows.
-function encodeCursor(row: Cursor): string {
-  return Buffer.from(`${row.sentAt.toISOString()}|${row.id}`, "utf8").toString("base64url");
+/// Keyset pagination on the message id. Discord snowflake ids are exact,
+/// unique, and monotonic with send time, so ordering by id desc is the same
+/// newest-first order as sent_at. Keying on the id avoids the earlier bug where
+/// a cursor built from sent_at lost sub-millisecond precision (JS Date is
+/// millisecond-only) and silently skipped rows at page boundaries. Offset
+/// pagination is not used because it drifts as new messages arrive at the head.
+///
+/// This assumes ids are the same length, true for any archive of current Discord
+/// messages (all 19-digit); a mix of 18- and 19-digit ids would order
+/// lexicographically rather than numerically, but pagination stays consistent.
+function encodeCursor(id: string): string {
+  return Buffer.from(id, "utf8").toString("base64url");
 }
 
-function decodeCursor(raw: string): Cursor {
-  const decoded = Buffer.from(raw, "base64url").toString("utf8");
-  const sep = decoded.lastIndexOf("|");
-  const sentAt = new Date(decoded.slice(0, sep));
-  const id = decoded.slice(sep + 1);
-  if (sep === -1 || Number.isNaN(sentAt.getTime()) || !id) {
+function decodeCursor(raw: string): string {
+  const id = Buffer.from(raw, "base64url").toString("utf8");
+  if (!id) {
     throw new Error("malformed cursor");
   }
-  return { sentAt, id };
+  return id;
 }
 
 export async function alertRoutes(app: FastifyInstance) {
@@ -49,7 +52,7 @@ export async function alertRoutes(app: FastifyInstance) {
     const { guildId, channelId, authorId, q, since, until, deleted, failed, limit, cursor } =
       parsed.data;
 
-    let after: Cursor | undefined;
+    let after: string | undefined;
     if (cursor) {
       try {
         after = decodeCursor(cursor);
@@ -70,13 +73,10 @@ export async function alertRoutes(app: FastifyInstance) {
         ...(deleted === "only" && { deletedAt: { not: null } }),
         ...(deleted === "exclude" && { deletedAt: null }),
         ...(failed && { deliveries: { some: { status: "FAILED" } } }),
-        // Row-value comparison expressed as OR, since Prisma has no tuple
-        // comparison. Equivalent to (sent_at, id) < (cursor.sentAt, cursor.id).
-        ...(after && {
-          OR: [{ sentAt: { lt: after.sentAt } }, { sentAt: after.sentAt, id: { lt: after.id } }],
-        }),
+        // Everything strictly older than the cursor, in id order.
+        ...(after && { id: { lt: after } }),
       },
-      orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+      orderBy: { id: "desc" },
       // One extra row tells us whether another page exists without a count query.
       take: limit + 1,
       // The full raw snapshot is large and unused by list clients; /alerts/:id
@@ -104,7 +104,7 @@ export async function alertRoutes(app: FastifyInstance) {
       page: {
         limit,
         hasMore,
-        nextCursor: hasMore && last ? encodeCursor(last) : null,
+        nextCursor: hasMore && last ? encodeCursor(last.id) : null,
       },
     };
   });

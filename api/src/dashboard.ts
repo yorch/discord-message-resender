@@ -114,6 +114,7 @@ const TEMPLATE = /* html */ `<!doctype html>
     border:1px solid var(--line-2); border-radius:8px; padding:9px 18px; cursor:pointer; }
   #more:hover { border-color:var(--relay); }
   .append-err { color:var(--danger); text-align:center; padding:12px; font-size:13px; }
+  #sentinel { height:1px; }
 </style>
 </head>
 <body>
@@ -139,6 +140,7 @@ const TEMPLATE = /* html */ `<!doctype html>
       <option value="only">Deleted only</option>
     </select>
     <label class="chk"><input type="checkbox" id="failed" /> Failed forwards only</label>
+    <label class="chk"><input type="checkbox" id="infinite" /> Infinite scroll</label>
     <label class="chk"><input type="checkbox" id="auto" /> Live</label>
   </div>
   <div class="stats" id="stats"></div>
@@ -147,6 +149,7 @@ const TEMPLATE = /* html */ `<!doctype html>
   <div class="newbar" id="newbar" hidden></div>
   <div id="list"><div class="state">Enter your API token and press Refresh.</div></div>
   <button id="more" hidden>Load older</button>
+  <div id="sentinel"></div>
 </main>
 <script nonce="__NONCE__">
 (() => {
@@ -227,7 +230,6 @@ const TEMPLATE = /* html */ `<!doctype html>
 
   function msgHtml(m) {
     const del = m.deletedAt;
-    const jump = m.raw && httpsUrl(m.raw.jump_url);
     return '<div class="msg' + (del ? " deleted" : "") + '" data-id="' + esc(m.id) + '">' +
       '<div class="av">' + initial(m.authorName) + "</div>" +
       '<div class="col">' +
@@ -237,7 +239,6 @@ const TEMPLATE = /* html */ `<!doctype html>
           '<span class="ts">' + fmt(m.sentAt) + "</span>" +
           (m.editedAt ? '<span class="ts">(edited)</span>' : "") +
           (del ? '<span class="badge del">deleted ' + fmt(del) + "</span>" : "") +
-          (jump ? '<a class="jump" href="' + esc(jump) + '" target="_blank" rel="noopener noreferrer">source ↗</a>' : "") +
         "</div>" +
         (m.content ? '<div class="content">' + esc(m.content) + "</div>" : "") +
         embedHtml(m.embeds) +
@@ -299,16 +300,20 @@ const TEMPLATE = /* html */ `<!doctype html>
         return;
       }
       const body = await r.json();
-      for (const m of body.data) shown.add(m.id);
+      // Append only messages not already shown, so a boundary row can never be
+      // rendered twice no matter what the server returns.
+      const incoming = reset ? body.data : body.data.filter((m) => !shown.has(m.id));
+      for (const m of incoming) shown.add(m.id);
       if (reset) {
-        $("list").innerHTML = body.data.length
-          ? body.data.map(msgHtml).join("")
+        $("list").innerHTML = incoming.length
+          ? incoming.map(msgHtml).join("")
           : '<div class="state">No messages match these filters.</div>';
-      } else {
-        $("list").insertAdjacentHTML("beforeend", body.data.map(msgHtml).join(""));
+      } else if (incoming.length) {
+        $("list").insertAdjacentHTML("beforeend", incoming.map(msgHtml).join(""));
       }
       cursor = body.page.nextCursor;
-      $("more").hidden = !body.page.hasMore;
+      // In infinite mode the sentinel drives loading, so keep the button hidden.
+      $("more").hidden = !body.page.hasMore || $("infinite").checked;
     } catch (e) {
       const box = '<div class="' + (reset ? "state err" : "append-err") + '">' + esc(e.message) + "</div>";
       if (reset) $("list").innerHTML = box; else $("list").insertAdjacentHTML("beforeend", box);
@@ -349,6 +354,27 @@ const TEMPLATE = /* html */ `<!doctype html>
   for (const id of ["channel", "author", "since", "deleted", "failed"])
     $(id).addEventListener("change", refresh);
   $("more").addEventListener("click", () => load(false));
+
+  // Infinite scroll. The IntersectionObserver is the scroll trigger, but the
+  // decision to load lives in maybeInfinite(), which also runs after each load
+  // so it chains when a page is too short to scroll and does not depend on the
+  // observer firing on every transition.
+  const sentinelNear = () =>
+    $("sentinel").getBoundingClientRect().top <= window.innerHeight + 400;
+  function maybeInfinite() {
+    if ($("infinite").checked && cursor && !loading && sentinelNear()) {
+      load(false).then(() => {
+        if ($("infinite").checked && cursor) setTimeout(maybeInfinite, 0);
+      });
+    }
+  }
+  const io = new IntersectionObserver(() => maybeInfinite(), { rootMargin: "400px" });
+  io.observe($("sentinel"));
+  $("infinite").addEventListener("change", (e) => {
+    $("more").hidden = e.target.checked || !cursor;
+    if (e.target.checked) maybeInfinite();
+  });
+
   $("auto").addEventListener("change", (e) => {
     clearInterval(timer);
     if (e.target.checked) timer = setInterval(tail, 12000);
