@@ -5,11 +5,6 @@
 default:
     @just --list
 
-# Short aliases for the everyday docker recipes.
-alias up := docker-up
-alias down := docker-down
-alias logs := docker-logs
-
 # ── Setup ─────────────────────────────────────────────────────────
 
 # Create .env and routes.yaml from examples, then install everything

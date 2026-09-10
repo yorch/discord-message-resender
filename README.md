@@ -39,8 +39,8 @@ idle client. Read it before you put a token in `.env`.
 just setup            # copy .env + routes.yaml from examples, install deps
 # edit .env (token, webhooks, API_TOKEN) and config/routes.yaml
 just check-token      # confirm the Discord token works
-just up               # start the stack
-just logs             # follow the ingest logs
+just docker-up        # start the stack
+just docker-logs      # follow the ingest logs
 ```
 
 Without `just`, the same steps are `cp .env.example .env`,
@@ -63,7 +63,7 @@ curl -H "Authorization: Bearer $API_TOKEN" \
 Common workflows are wrapped in a `Justfile`. Run `just` to list them:
 
 - `just check` runs every quality gate (lint, typecheck, build, tests).
-- `just up` / `just down` / `just logs` operate the Docker stack.
+- `just docker-up` / `just docker-down` / `just docker-logs` operate the stack.
 - `just verify` and `just check-integration` run the live-Postgres checks.
 - `just db-migrate` / `just db-deploy` manage the schema.
 
