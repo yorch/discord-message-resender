@@ -36,18 +36,18 @@ idle client. Read it before you put a token in `.env`.
 ## Quick start
 
 ```bash
-cp .env.example .env                      # fill in token, webhooks, API token
-cp config/routes.example.yaml config/routes.yaml   # fill in guild and channel IDs
-cd ingest && uv run resender-check-token && cd ..   # confirm the token works
-docker compose up -d
-docker compose logs -f ingest
+just setup            # copy .env + routes.yaml from examples, install deps
+# edit .env (token, webhooks, API_TOKEN) and config/routes.yaml
+just check-token      # confirm the Discord token works
+just up               # start the stack
+just logs             # follow the ingest logs
 ```
 
-Confirm the stack is wired correctly:
+Without `just`, the same steps are `cp .env.example .env`,
+`cp config/routes.example.yaml config/routes.yaml`, then `docker compose up -d`.
+See `docs/setup.md` for how to obtain the token, guild, and channel IDs.
 
-```bash
-./scripts/verify-stack.sh
-```
+Confirm the stack is wired correctly with `just verify`.
 
 Open the dashboard at `http://localhost:4000/`, paste your `API_TOKEN`, and browse
 the archive. Deleted alerts are kept and shown struck through; filter to live-only or
@@ -57,6 +57,15 @@ deleted-only. Or query the API directly:
 curl -H "Authorization: Bearer $API_TOKEN" \
   'http://localhost:4000/alerts?limit=20'
 ```
+
+## Tasks
+
+Common workflows are wrapped in a `Justfile`. Run `just` to list them:
+
+- `just check` runs every quality gate (lint, typecheck, build, tests).
+- `just up` / `just down` / `just logs` operate the Docker stack.
+- `just verify` and `just check-integration` run the live-Postgres checks.
+- `just db-migrate` / `just db-deploy` manage the schema.
 
 ## Documentation
 
