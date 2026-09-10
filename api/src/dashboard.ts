@@ -155,6 +155,11 @@ const TEMPLATE = /* html */ `<!doctype html>
     return IMG_EXT.some((ext) => path.endsWith(ext));
   };
 
+  // Prefer Discord's proxy URL: it is hosted on a discordapp.net host (so it
+  // passes the CSP and never beacons an arbitrary external host) and is what the
+  // Discord client itself renders.
+  const pickImg = (o) => (o && (o.proxy_url || o.url)) || null;
+
   function imgTag(url) {
     const u = httpsUrl(url);
     if (!u) return "";
@@ -177,7 +182,7 @@ const TEMPLATE = /* html */ `<!doctype html>
           '<div class="efield"><div class="en">' + esc(f.name) + '</div><div class="ev">' +
           esc(f.value) + "</div></div>").join("") + "</div>";
       }
-      const imgs = [e.image && e.image.url, e.thumbnail && e.thumbnail.url]
+      const imgs = [pickImg(e.image), pickImg(e.thumbnail)]
         .map(imgTag).filter(Boolean).join("");
       if (imgs) h += '<div class="imgs">' + imgs + "</div>";
       if (e.footer && e.footer.text) h += '<div class="efoot">' + esc(e.footer.text) + "</div>";
@@ -187,7 +192,7 @@ const TEMPLATE = /* html */ `<!doctype html>
 
   function attachmentsHtml(atts) {
     if (!Array.isArray(atts) || !atts.length) return "";
-    const images = atts.filter(isImage).map((a) => imgTag(a.url)).filter(Boolean).join("");
+    const images = atts.filter(isImage).map((a) => imgTag(pickImg(a))).filter(Boolean).join("");
     const files = atts.filter((a) => !isImage(a) && httpsUrl(a.url)).map((a) =>
       '<a class="file" href="' + esc(a.url) + '" target="_blank" rel="noopener noreferrer">' +
       esc(a.filename || "attachment") + "</a>").join("");

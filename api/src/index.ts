@@ -27,7 +27,9 @@ app.get("/", async (_request, reply) => {
     // Message images are Discord-hosted; scope img-src to Discord's CDNs (plus
     // data: for inline placeholders) so a non-Discord URL in a captured message
     // cannot be used to beacon the viewer.
-    "img-src https://cdn.discordapp.com https://media.discordapp.net data:",
+    // Discord serves attachments from cdn.discordapp.com and proxies embed images
+    // through media/images-ext hosts on discordapp.net; scope to those, not all https.
+    "img-src https://cdn.discordapp.com https://*.discordapp.net data:",
     // The dashboard's fetch() calls to /alerts and /stats are same-origin.
     "connect-src 'self'",
     "frame-ancestors 'none'",
