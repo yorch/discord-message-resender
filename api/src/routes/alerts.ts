@@ -8,13 +8,15 @@ const listQuery = z.object({
   guildId: z.string().optional(),
   channelId: z.string().optional(),
   authorId: z.string().optional(),
-  /// Case-insensitive substring match against the plain-text content column.
-  /// Does not search embed bodies; use the raw payload for that.
+  /// Case-insensitive substring match against searchText, which the ingest
+  /// service fills with the content plus every embed's text.
   q: z.string().min(1).optional(),
   since: z.coerce.date().optional(),
   until: z.coerce.date().optional(),
   /// any (default) returns live and deleted; only returns deleted; exclude hides them.
   deleted: z.enum(["any", "only", "exclude"]).default("any"),
+  /// When true, only messages that have at least one FAILED delivery.
+  failed: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().positive().max(MAX_LIMIT).default(50),
   cursor: z.string().optional(),
 });
@@ -44,7 +46,8 @@ export async function alertRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid query", issues: parsed.error.issues });
     }
-    const { guildId, channelId, authorId, q, since, until, deleted, limit, cursor } = parsed.data;
+    const { guildId, channelId, authorId, q, since, until, deleted, failed, limit, cursor } =
+      parsed.data;
 
     let after: Cursor | undefined;
     if (cursor) {
@@ -60,12 +63,13 @@ export async function alertRoutes(app: FastifyInstance) {
         ...(guildId && { guildId }),
         ...(channelId && { channelId }),
         ...(authorId && { authorId }),
-        ...(q && { content: { contains: q, mode: "insensitive" } }),
+        ...(q && { searchText: { contains: q, mode: "insensitive" } }),
         ...((since || until) && {
           sentAt: { ...(since && { gte: since }), ...(until && { lte: until }) },
         }),
         ...(deleted === "only" && { deletedAt: { not: null } }),
         ...(deleted === "exclude" && { deletedAt: null }),
+        ...(failed && { deliveries: { some: { status: "FAILED" } } }),
         // Row-value comparison expressed as OR, since Prisma has no tuple
         // comparison. Equivalent to (sent_at, id) < (cursor.sentAt, cursor.id).
         ...(after && {
@@ -80,7 +84,13 @@ export async function alertRoutes(app: FastifyInstance) {
       omit: { raw: true },
       include: {
         deliveries: {
-          select: { route: true, status: true, attempts: true, deliveredAt: true },
+          select: {
+            route: true,
+            status: true,
+            attempts: true,
+            deliveredAt: true,
+            lastError: true,
+          },
         },
       },
     });
@@ -115,11 +125,17 @@ export async function alertRoutes(app: FastifyInstance) {
   });
 
   app.get("/stats", async () => {
-    const [byChannel, byDeliveryStatus, total, deletedCount, latest] = await Promise.all([
+    const [byChannel, byAuthor, byDeliveryStatus, total, deletedCount, latest] = await Promise.all([
       prisma.message.groupBy({
         by: ["guildId", "guildName", "channelId", "channelName"],
         _count: { _all: true },
         _max: { sentAt: true },
+      }),
+      prisma.message.groupBy({
+        by: ["authorId", "authorName"],
+        _count: { _all: true },
+        orderBy: { _count: { authorId: "desc" } },
+        take: 100,
       }),
       prisma.delivery.groupBy({ by: ["route", "status"], _count: { _all: true } }),
       prisma.message.count(),
@@ -138,6 +154,11 @@ export async function alertRoutes(app: FastifyInstance) {
         channelName: c.channelName,
         messages: c._count._all,
         latestMessageAt: c._max.sentAt,
+      })),
+      authors: byAuthor.map((a) => ({
+        authorId: a.authorId,
+        authorName: a.authorName,
+        messages: a._count._all,
       })),
       deliveries: byDeliveryStatus.map((d) => ({
         route: d.route,

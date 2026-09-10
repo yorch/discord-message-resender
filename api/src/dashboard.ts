@@ -7,11 +7,10 @@
 // and /stats carry the bearer token, which the viewer pastes once and which is
 // kept in localStorage on their own machine only.
 //
-// It uses system fonts and no external resources so the strict per-request CSP
-// set in index.ts (default-src 'none', nonce'd inline style/script, img-src
-// scoped to Discord's CDNs) stays intact. Every field rendered from a captured
-// message is attacker-controlled Discord text and goes through esc(); image URLs
-// are additionally required to be https and are backstopped by the CSP.
+// System fonts and no external resources, so the strict per-request CSP in
+// index.ts stays intact. Every field rendered from a captured message is
+// attacker-controlled Discord text and goes through esc(); image URLs must be
+// https and are backstopped by the CSP's img-src.
 
 const TEMPLATE = /* html */ `<!doctype html>
 <html lang="en">
@@ -31,38 +30,44 @@ const TEMPLATE = /* html */ `<!doctype html>
   * { box-sizing:border-box; }
   body { margin:0; background:var(--ink); color:var(--text); font-family:var(--sans);
     font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased; }
-  a { color:var(--relay); text-decoration:none; }
-  a:hover { text-decoration:underline; }
+  a { color:var(--relay); text-decoration:none; } a:hover { text-decoration:underline; }
 
-  header { position:sticky; top:0; z-index:5; background:rgba(16,20,28,.9);
+  header { position:sticky; top:0; z-index:5; background:rgba(16,20,28,.92);
     backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
-  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    padding:12px 20px; max-width:1000px; margin:0 auto; }
-  .logo { font-family:var(--mono); font-weight:700; font-size:14px; margin-right:6px; white-space:nowrap; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    padding:11px 20px; max-width:1040px; margin:0 auto; }
+  .logo { font-family:var(--mono); font-weight:700; font-size:14px; margin-right:4px; white-space:nowrap; }
   .logo .a { color:var(--source); } .logo .b { color:var(--relay); }
   input, select, button { font:inherit; color:var(--text); background:var(--ink-2);
-    border:1px solid var(--line-2); border-radius:8px; padding:8px 11px; }
+    border:1px solid var(--line-2); border-radius:8px; padding:7px 10px; }
   input:focus, select:focus { outline:none; border-color:var(--relay); }
   input::placeholder { color:var(--faint); }
-  #token { min-width:150px; } #q { min-width:150px; flex:1; } #channelId { width:150px; }
-  button.go { background:var(--relay); color:#06231a; border-color:var(--relay);
-    font-weight:600; cursor:pointer; }
+  #token { min-width:130px; } #q { min-width:150px; flex:1; }
+  select { max-width:210px; }
+  label.chk { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:13px; white-space:nowrap; }
+  button.go { background:var(--relay); color:#06231a; border-color:var(--relay); font-weight:600; cursor:pointer; }
   button.go:hover { background:#5ee2b8; }
-  label.auto { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:13px; white-space:nowrap; }
+  .row2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    max-width:1040px; margin:0 auto; padding:0 20px 11px; }
 
-  .stats { max-width:1000px; margin:0 auto; padding:11px 20px; display:flex; gap:22px;
+  .stats { max-width:1040px; margin:0 auto; padding:10px 20px; display:flex; gap:20px;
     flex-wrap:wrap; color:var(--muted); font-size:13px; border-bottom:1px solid var(--line); }
   .stats b { color:var(--text); font-family:var(--mono); font-weight:500; }
   .stats .sep { color:var(--relay); }
 
-  main { max-width:1000px; margin:0 auto; padding:18px 20px 60px; }
+  main { max-width:1040px; margin:0 auto; padding:16px 20px 60px; }
+  .newbar { text-align:center; margin-bottom:12px; }
+  .newbar button { background:var(--surface-2); color:var(--relay); border:1px solid var(--relay);
+    border-radius:20px; padding:5px 14px; font-size:12.5px; cursor:pointer; }
 
   .msg { background:var(--surface); border:1px solid var(--line); border-radius:12px;
     padding:14px 16px; margin-bottom:12px; display:flex; gap:12px; }
   .msg.deleted { opacity:.72; border-color:#3a2020; }
-  .av { width:40px; height:40px; border-radius:11px; flex:none; display:flex;
-    align-items:center; justify-content:center; font-family:var(--mono); font-weight:700;
-    font-size:16px; background:var(--surface-2); color:var(--source); }
+  .msg.fresh { animation:flash 1.4s ease; }
+  @keyframes flash { from { border-color:var(--relay); } to { border-color:var(--line); } }
+  .av { width:40px; height:40px; border-radius:11px; flex:none; display:flex; align-items:center;
+    justify-content:center; font-family:var(--mono); font-weight:700; font-size:16px;
+    background:var(--surface-2); color:var(--source); }
   .msg.deleted .av { color:var(--danger); }
   .col { min-width:0; flex:1; }
   .meta { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:3px; }
@@ -72,11 +77,12 @@ const TEMPLATE = /* html */ `<!doctype html>
   .ts { font-family:var(--mono); font-size:11.5px; color:var(--faint); }
   .badge.del { color:var(--danger); border-color:#4a2626; background:rgba(255,107,107,.08); }
   .content { white-space:pre-wrap; word-break:break-word; }
+  .jump { font-size:11.5px; margin-left:auto; }
 
   .embed { margin-top:9px; border-left:3px solid var(--source); background:var(--ink-2);
-    border-radius:0 8px 8px 0; padding:9px 12px; max-width:520px; }
+    border-radius:0 8px 8px 0; padding:9px 12px; max-width:540px; }
   .embed .etitle { font-weight:600; margin-bottom:2px; }
-  .embed .edesc { color:var(--text); font-size:13.5px; }
+  .embed .edesc { font-size:13.5px; }
   .efields { display:flex; flex-wrap:wrap; gap:10px 20px; margin-top:7px; }
   .efield .en { color:var(--muted); font-size:11.5px; font-family:var(--mono); }
   .efield .ev { font-size:13px; }
@@ -92,13 +98,15 @@ const TEMPLATE = /* html */ `<!doctype html>
     border-radius:8px; padding:5px 10px; }
   .file:hover { border-color:var(--relay); text-decoration:none; }
 
-  .delivery { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .delivery { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
   .dchip { font-family:var(--mono); font-size:11px; padding:2px 9px; border-radius:20px;
     border:1px solid var(--line); color:var(--muted); }
   .dchip.DELIVERED { color:var(--relay); border-color:var(--relay); background:rgba(63,214,166,.08); }
   .dchip.PENDING { color:var(--source); border-color:var(--source); background:rgba(240,176,62,.08); }
   .dchip.FAILED { color:var(--danger); border-color:#4a2626; background:rgba(255,107,107,.08); }
   .dchip.SKIPPED { color:var(--faint); }
+  .derr { color:var(--danger); font-family:var(--mono); font-size:11.5px; margin-top:6px;
+    white-space:pre-wrap; word-break:break-word; }
 
   .state { text-align:center; color:var(--muted); padding:56px 20px; }
   .state.err { color:var(--danger); }
@@ -113,19 +121,30 @@ const TEMPLATE = /* html */ `<!doctype html>
   <div class="bar">
     <span class="logo"><span class="a">alert</span> <span class="b">archive</span></span>
     <input id="token" type="password" placeholder="API token" />
-    <input id="q" placeholder="Search message text" />
-    <input id="channelId" placeholder="Channel ID" />
+    <input id="q" placeholder="Search text and embeds" />
+    <button class="go" id="refresh">Refresh</button>
+  </div>
+  <div class="row2">
+    <select id="channel"><option value="">All channels</option></select>
+    <select id="author"><option value="">All authors</option></select>
+    <select id="since">
+      <option value="">Any time</option>
+      <option value="1">Last 24h</option>
+      <option value="7">Last 7 days</option>
+      <option value="30">Last 30 days</option>
+    </select>
     <select id="deleted">
-      <option value="any">All</option>
+      <option value="any">Live &amp; deleted</option>
       <option value="exclude">Live only</option>
       <option value="only">Deleted only</option>
     </select>
-    <label class="auto"><input type="checkbox" id="auto" /> Auto-refresh</label>
-    <button class="go" id="refresh">Refresh</button>
+    <label class="chk"><input type="checkbox" id="failed" /> Failed forwards only</label>
+    <label class="chk"><input type="checkbox" id="auto" /> Live</label>
   </div>
   <div class="stats" id="stats"></div>
 </header>
 <main>
+  <div class="newbar" id="newbar" hidden></div>
   <div id="list"><div class="state">Enter your API token and press Refresh.</div></div>
   <button id="more" hidden>Load older</button>
 </main>
@@ -135,9 +154,9 @@ const TEMPLATE = /* html */ `<!doctype html>
   const $ = (id) => document.getElementById(id);
   const KEY = "alert-archive-token";
   let cursor = null, loading = false, timer = null;
+  const shown = new Set();
 
   try { $("token").value = localStorage.getItem(KEY) || ""; } catch {}
-
   const headers = () => ({ Authorization: "Bearer " + $("token").value.trim() });
   const saveToken = () => { try { localStorage.setItem(KEY, $("token").value.trim()); } catch {} };
 
@@ -146,7 +165,6 @@ const TEMPLATE = /* html */ `<!doctype html>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
   const fmt = (ts) => (ts ? new Date(ts).toLocaleString() : "");
-  // Only https URLs render; the CSP further limits image loads to Discord's CDNs.
   const httpsUrl = (u) => (typeof u === "string" && u.startsWith("https://") ? u : "");
   const IMG_EXT = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"];
   const isImage = (a) => {
@@ -154,10 +172,6 @@ const TEMPLATE = /* html */ `<!doctype html>
     const path = (a.url || "").toLowerCase().split("?")[0];
     return IMG_EXT.some((ext) => path.endsWith(ext));
   };
-
-  // Prefer Discord's proxy URL: it is hosted on a discordapp.net host (so it
-  // passes the CSP and never beacons an arbitrary external host) and is what the
-  // Discord client itself renders.
   const pickImg = (o) => (o && (o.proxy_url || o.url)) || null;
 
   function imgTag(url) {
@@ -182,8 +196,7 @@ const TEMPLATE = /* html */ `<!doctype html>
           '<div class="efield"><div class="en">' + esc(f.name) + '</div><div class="ev">' +
           esc(f.value) + "</div></div>").join("") + "</div>";
       }
-      const imgs = [pickImg(e.image), pickImg(e.thumbnail)]
-        .map(imgTag).filter(Boolean).join("");
+      const imgs = [pickImg(e.image), pickImg(e.thumbnail)].map(imgTag).filter(Boolean).join("");
       if (imgs) h += '<div class="imgs">' + imgs + "</div>";
       if (e.footer && e.footer.text) h += '<div class="efoot">' + esc(e.footer.text) + "</div>";
       return h + "</div>";
@@ -200,17 +213,22 @@ const TEMPLATE = /* html */ `<!doctype html>
            (files ? '<div class="files">' + files + "</div>" : "");
   }
 
-  function initial(name) {
-    const n = (name || "?").trim();
-    return esc(n ? n[0].toUpperCase() : "?");
+  const initial = (name) => { const n = (name || "?").trim(); return esc(n ? n[0].toUpperCase() : "?"); };
+
+  function deliveryHtml(deliveries) {
+    if (!Array.isArray(deliveries) || !deliveries.length) return "";
+    const chips = deliveries.map((d) =>
+      '<span class="dchip ' + esc(d.status) + '">' + esc(d.route) + " · " + esc(d.status) + "</span>"
+    ).join("");
+    const errs = deliveries.filter((d) => d.status === "FAILED" && d.lastError).map((d) =>
+      '<div class="derr">' + esc(d.route) + ": " + esc(d.lastError) + "</div>").join("");
+    return '<div class="delivery">' + chips + "</div>" + errs;
   }
 
   function msgHtml(m) {
     const del = m.deletedAt;
-    const deliv = (m.deliveries || []).map((d) =>
-      '<span class="dchip ' + esc(d.status) + '">' + esc(d.route) + " · " + esc(d.status) + "</span>"
-    ).join("");
-    return '<div class="msg' + (del ? " deleted" : "") + '">' +
+    const jump = m.raw && httpsUrl(m.raw.jump_url);
+    return '<div class="msg' + (del ? " deleted" : "") + '" data-id="' + esc(m.id) + '">' +
       '<div class="av">' + initial(m.authorName) + "</div>" +
       '<div class="col">' +
         '<div class="meta">' +
@@ -219,12 +237,19 @@ const TEMPLATE = /* html */ `<!doctype html>
           '<span class="ts">' + fmt(m.sentAt) + "</span>" +
           (m.editedAt ? '<span class="ts">(edited)</span>' : "") +
           (del ? '<span class="badge del">deleted ' + fmt(del) + "</span>" : "") +
+          (jump ? '<a class="jump" href="' + esc(jump) + '" target="_blank" rel="noopener noreferrer">source ↗</a>' : "") +
         "</div>" +
         (m.content ? '<div class="content">' + esc(m.content) + "</div>" : "") +
         embedHtml(m.embeds) +
         attachmentsHtml(m.attachments) +
-        (deliv ? '<div class="delivery">' + deliv + "</div>" : "") +
+        deliveryHtml(m.deliveries) +
       "</div></div>";
+  }
+
+  function fillSelect(sel, keep, items) {
+    const cur = sel.value;
+    sel.innerHTML = keep + items;
+    sel.value = cur; // preserve selection across refreshes
   }
 
   async function loadStats() {
@@ -237,16 +262,33 @@ const TEMPLATE = /* html */ `<!doctype html>
         '<span class="sep">·</span><span><b>' + (s.deletedMessages || 0) + "</b> deleted</span>" +
         '<span class="sep">·</span><span>' + (s.channels || []).length + " channels</span>" +
         '<span class="sep">·</span><span>latest <b>' + (fmt(s.latestMessageAt) || "—") + "</b></span>";
+      fillSelect($("channel"), '<option value="">All channels</option>',
+        (s.channels || []).map((c) =>
+          '<option value="' + esc(c.channelId) + '">#' + esc(c.channelName || c.channelId) +
+          (c.guildName ? " (" + esc(c.guildName) + ")" : "") + "</option>").join(""));
+      fillSelect($("author"), '<option value="">All authors</option>',
+        (s.authors || []).map((a) =>
+          '<option value="' + esc(a.authorId) + '">' + esc(a.authorName) +
+          " (" + a.messages + ")</option>").join(""));
     } catch { $("stats").innerHTML = ""; }
+  }
+
+  function queryParams() {
+    const p = new URLSearchParams({ limit: "50", deleted: $("deleted").value });
+    if ($("q").value.trim()) p.set("q", $("q").value.trim());
+    if ($("channel").value) p.set("channelId", $("channel").value);
+    if ($("author").value) p.set("authorId", $("author").value);
+    if ($("failed").checked) p.set("failed", "true");
+    const days = $("since").value;
+    if (days) p.set("since", new Date(Date.now() - days * 86400000).toISOString());
+    return p;
   }
 
   async function load(reset) {
     if (loading) return;
     loading = true;
-    if (reset) { cursor = null; }
-    const p = new URLSearchParams({ limit: "50", deleted: $("deleted").value });
-    if ($("q").value.trim()) p.set("q", $("q").value.trim());
-    if ($("channelId").value.trim()) p.set("channelId", $("channelId").value.trim());
+    if (reset) { cursor = null; shown.clear(); }
+    const p = queryParams();
     if (cursor) p.set("cursor", cursor);
     try {
       const r = await fetch("alerts?" + p.toString(), { headers: headers() });
@@ -257,6 +299,7 @@ const TEMPLATE = /* html */ `<!doctype html>
         return;
       }
       const body = await r.json();
+      for (const m of body.data) shown.add(m.id);
       if (reset) {
         $("list").innerHTML = body.data.length
           ? body.data.map(msgHtml).join("")
@@ -268,9 +311,29 @@ const TEMPLATE = /* html */ `<!doctype html>
       $("more").hidden = !body.page.hasMore;
     } catch (e) {
       const box = '<div class="' + (reset ? "state err" : "append-err") + '">' + esc(e.message) + "</div>";
-      if (reset) $("list").innerHTML = box;
-      else $("list").insertAdjacentHTML("beforeend", box);
+      if (reset) $("list").innerHTML = box; else $("list").insertAdjacentHTML("beforeend", box);
     } finally { loading = false; }
+  }
+
+  // Live tail: fetch the newest page and prepend only messages not already shown,
+  // preserving scroll instead of reloading the whole list.
+  async function tail() {
+    if (loading || !$("token").value.trim()) return;
+    try {
+      const r = await fetch("alerts?" + queryParams().toString(), { headers: headers() });
+      if (!r.ok) return;
+      const body = await r.json();
+      const fresh = body.data.filter((m) => !shown.has(m.id));
+      if (!fresh.length) return;
+      for (const m of fresh) shown.add(m.id);
+      // response is newest-first; prepend as a block so order is preserved
+      $("list").insertAdjacentHTML("afterbegin", fresh.map(msgHtml).join(""));
+      for (const m of fresh) {
+        const el = $("list").querySelector('[data-id="' + CSS.escape(m.id) + '"]');
+        if (el) el.classList.add("fresh");
+      }
+      loadStats();
+    } catch {}
   }
 
   function refresh() {
@@ -282,13 +345,13 @@ const TEMPLATE = /* html */ `<!doctype html>
   }
 
   $("refresh").addEventListener("click", refresh);
-  for (const id of ["q", "channelId"])
-    $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") refresh(); });
-  $("deleted").addEventListener("change", refresh);
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") refresh(); });
+  for (const id of ["channel", "author", "since", "deleted", "failed"])
+    $(id).addEventListener("change", refresh);
   $("more").addEventListener("click", () => load(false));
   $("auto").addEventListener("change", (e) => {
     clearInterval(timer);
-    if (e.target.checked) timer = setInterval(refresh, 15000);
+    if (e.target.checked) timer = setInterval(tail, 12000);
   });
 
   if ($("token").value) refresh();
