@@ -9,6 +9,12 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     ROUTES_PATH=/app/config/routes.yaml
 
+# git is required for the pinned git dependency (discord.py-self is sourced from
+# a commit on main, not PyPI); python:3.13-slim ships without it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src

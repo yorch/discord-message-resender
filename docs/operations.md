@@ -137,15 +137,29 @@ the same tables, so a schema change is a two-sided edit.
 
 ## Upgrading the self-bot library
 
-`discord.py-self` tracks changes to the official client that the account is
-impersonating. A stale version sends a fingerprint no real client sends, which
-is the main thing automated detection looks for. Check for releases periodically
-and upgrade promptly rather than pinning indefinitely:
+`discord.py-self` is pinned to a specific commit of the upstream `main` branch in
+`ingest/pyproject.toml` under `[tool.uv.sources]`, not to the PyPI release. main
+tracks the current Discord client fingerprint (the IDENTIFY payload,
+super-properties, heartbeat cadence), which is the main thing automated detection
+looks for, and the last release lagged it by months. The cost of this choice is
+that updates are a manual commit bump rather than a version bump.
+
+To take upstream updates, set the new commit and re-lock:
 
 ```bash
-cd ingest && uv lock --upgrade-package discord.py-self && uv sync
-uv run pytest && docker compose build ingest
+# find the latest commit on main:
+#   https://github.com/dolfies/discord.py-self/commits/master
+cd ingest
+# edit the rev = "<sha>" under [tool.uv.sources] in pyproject.toml, then:
+uv lock && uv sync
+uv run pytest              # confirm nothing broke
+docker compose build ingest
 ```
+
+After a bump, confirm the discord API the code uses still exists: `uv run pytest`
+passing and the ingest modules importing is the fast check, because main
+occasionally removes gateway events. The ingest image installs this git
+dependency, so its Dockerfile adds `git`, which `python:3.13-slim` omits.
 
 ## Restarting
 

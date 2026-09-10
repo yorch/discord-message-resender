@@ -336,18 +336,14 @@ sdist = { url = "https://files.pythonhosted.org/packages/3a/7c/4b9eaf1f85caa5ff9
 
 [[package]]
 name = "discord-py-self"
-version = "2.1.0"
-source = { registry = "https://pypi.org/simple" }
+version = "2.2.0a5340+g2ba64a9a"
+source = { git = "https://github.com/dolfies/discord.py-self.git?rev=2ba64a9a997e151a9c259984e0a179b1fdf4aff4#2ba64a9a997e151a9c259984e0a179b1fdf4aff4" }
 dependencies = [
     { name = "aiohttp" },
     { name = "audioop-lts" },
     { name = "curl-cffi" },
     { name = "discord-protos" },
     { name = "tzlocal" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/37/0a319b6465183a01d245ecdae99d59503bad41ed1176cd7e6943306a5949/discord_py_self-2.1.0.tar.gz", hash = "sha256:9bc6d87711e9345784f2ed23cabbe63eba9673008e5b460aa25e3546570bcd07", size = 1159618, upload-time = "2026-01-18T23:37:06.224Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/f1/58be56fe81619543e72503aa77727e07fa14623bd8760876e7f107a4e276/discord_py_self-2.1.0-py3-none-any.whl", hash = "sha256:42abda55168f1c1a2b585a16906d3aefd390d98238d6fc0e5fa586009f54204b", size = 1283993, upload-time = "2026-01-18T23:37:04.602Z" },
 ]
 
 [[package]]
@@ -781,7 +777,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
-    { name = "discord-py-self", specifier = ">=2.1.0,<3" },
+    { name = "discord-py-self", git = "https://github.com/dolfies/discord.py-self.git?rev=2ba64a9a997e151a9c259984e0a179b1fdf4aff4" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

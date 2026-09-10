@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Captures Discord alert messages, archives them, and forwards them onward"
 requires-python = ">=3.13"
 dependencies = [
-    "discord.py-self>=2.1.0,<3",
+    "discord.py-self",
     "asyncpg>=0.30",
     "PyYAML>=6.0",
     "python-dotenv>=1.0",
@@ -20,6 +20,14 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
 ]
+
+[tool.uv.sources]
+# Pinned to a specific commit on main rather than the PyPI 2.1.0 release. main
+# tracks the current Discord client fingerprint (IDENTIFY, super-properties,
+# heartbeat), which is the main detection surface for a user-token client, and
+# the release lagged it by ~7 months. Bump this SHA to take upstream updates;
+# see docs/operations.md.
+"discord.py-self" = { git = "https://github.com/dolfies/discord.py-self.git", rev = "2ba64a9a997e151a9c259984e0a179b1fdf4aff4" }
 
 [build-system]
 requires = ["hatchling"]
