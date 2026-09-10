@@ -100,6 +100,25 @@ declares its VOLUME. If you ever change that mount path, check
 `docker inspect postgres:18-alpine` first: mounting the wrong path appears to
 work while writing to an anonymous volume that a prune destroys.
 
+## Continuous integration
+
+Every push and pull request against `main` runs `.github/workflows/ci.yml`:
+
+- **api**: `pnpm lint`, `typecheck`, and `build`.
+- **ingest**: `ruff check`, `ruff format --check`, and `pytest`.
+- **integration**: applies the migrations to a Postgres 18 service, then runs
+  `scripts/check_schema_contract.py` and `scripts/check_retry_lifecycle.py`
+  against it. This is what guards the cross-language SQL contract and the retry
+  backoff behaviour, which no single-language unit test can see.
+
+Run the integration checks locally against the compose stack:
+
+```bash
+docker compose up -d --wait postgres api
+docker compose run --rm -T ingest python - < scripts/check_schema_contract.py
+docker compose run --rm -T ingest python - < scripts/check_retry_lifecycle.py
+```
+
 ## Changing the schema
 
 Prisma owns migrations, and the ingest service writes hand-written SQL against

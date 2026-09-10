@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# One in-flight run per ref; a new push cancels the previous.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api (lint · typecheck · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: api/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The generated client is gitignored, so build it before typecheck. The
+      # URL is a placeholder; generate never connects.
+      - run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  ingest:
+    name: ingest (ruff · pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ingest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: ingest/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+  integration:
+    name: integration (cross-language schema + retry against Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: resender
+          POSTGRES_PASSWORD: resender
+          POSTGRES_DB: resender
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U resender -d resender"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://resender:resender@localhost:5432/resender
+    steps:
+      - uses: actions/checkout@v7
+
+      # Apply the Prisma-owned migrations with the Node toolchain.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: api/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: api
+      - run: pnpm db:deploy
+        working-directory: api
+
+      # Exercise the hand-written ingest SQL against that schema, both the
+      # cross-language contract and the retry lifecycle, with the Python toolchain.
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: ingest/uv.lock
+      - run: uv sync --frozen
+        working-directory: ingest
+      - run: uv run python ../scripts/check_schema_contract.py
+        working-directory: ingest
+      - run: uv run python ../scripts/check_retry_lifecycle.py
+        working-directory: ingest

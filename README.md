@@ -1,5 +1,8 @@
 # discord-message-resender
 
+[![CI](https://github.com/yorch/discord-message-resender/actions/workflows/ci.yml/badge.svg)](https://github.com/yorch/discord-message-resender/actions/workflows/ci.yml)
+
+
 Captures messages from Discord trading-alert channels in real time, archives them in
 Postgres, and forwards them into a Discord server you control.
 
