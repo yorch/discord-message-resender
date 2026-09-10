@@ -3,6 +3,7 @@ import re
 import pytest
 
 from resender.config import Filters, Route, Settings
+from resender.db import DueDelivery
 from resender.forwarder import DeliveryError, NothingToSendError
 from resender.pipeline import Pipeline
 
@@ -15,6 +16,7 @@ class FakeDb:
         self._stored = set(already_stored)
         self._deleted = set()
         self.failures = []
+        self._due = []
 
     async def store_message(self, message):
         if message.id in self._stored:
@@ -59,7 +61,7 @@ class FakeDb:
         return len(marked)
 
     async def due_deliveries(self, max_attempts, limit=50):
-        return []
+        return list(self._due)
 
 
 class FakeForwarder:
@@ -283,3 +285,38 @@ async def test_empty_bulk_delete_does_nothing(make_message):
     pipeline, _, _ = build([route()], log)
     await pipeline.apply_bulk_delete([])
     assert log == []
+
+
+async def test_retry_due_redelivers_and_marks_delivered(make_message):
+    # A previously failed, now-due delivery is retried and, on success, marked
+    # DELIVERED. This is the recover half of the backoff-and-recover cycle.
+    log = []
+    pipeline, db, _ = build([route()], log)
+    db._due = [DueDelivery(route="alpha", attempts=1, message=make_message(id="900"))]
+    handled = await pipeline.retry_due()
+    assert handled == 1
+    assert "send:900" in log
+    assert "delivered:900:alpha" in log
+
+
+async def test_retry_due_passes_through_the_current_attempt_count(make_message):
+    # On another failure the sweep must report the attempts already made, so the
+    # backoff keeps growing instead of resetting.
+    log = []
+    err = DeliveryError("503", retryable=True)
+    pipeline, db, _ = build([route()], log, forwarder=FakeForwarder(log, error=err))
+    db._due = [DueDelivery(route="alpha", attempts=3, message=make_message(id="900"))]
+    handled = await pipeline.retry_due()
+    assert handled == 1
+    assert db.failures and db.failures[0][1] == 3
+
+
+async def test_retry_due_skips_a_route_that_no_longer_exists(make_message):
+    # A pending row for a route removed from config must be left in place, not
+    # crash the sweep or get silently reassigned.
+    log = []
+    pipeline, db, fw = build([route(name="alpha")], log)
+    db._due = [DueDelivery(route="removed", attempts=2, message=make_message(id="900"))]
+    handled = await pipeline.retry_due()
+    assert handled == 0
+    assert fw.sent == []
